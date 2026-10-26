@@ -57,7 +57,7 @@ en `waf/tuning-local.conf`, las cargas en caliente y las ves actuar.
    o, si usas git:
 
    ```bash
-   git clone https://github.com/<usuario>/<repositorio>.git
+   git clone https://github.com/UPM-RSTI/MUCS_UPM_SRRA_WAF_Secutiry.git
    cd <repositorio>
    ```
 
