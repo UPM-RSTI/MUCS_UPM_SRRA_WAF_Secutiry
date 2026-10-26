@@ -1,0 +1,75 @@
+# =============================================================================
+#  Bootstrap del laboratorio WAF + OWASP Juice Shop
+# =============================================================================
+#  Este es el UNICO fichero que se usa desde el host, con un solo comando:
+#
+#      docker compose up -d --build
+#
+#  Levanta tres contenedores en la misma red (waf-net):
+#
+#      juice-shop   la aplicacion vulnerable (backend)
+#      waf-proxy    nginx + ModSecurity + OWASP CRS (el WAF)
+#      waf-jupyter  el "puesto del analista": Jupyter con celdas bash desde el
+#                   que se ejecuta TODO el trabajo del laboratorio, dentro de
+#                   la red Docker (abre http://localhost:8888)
+#
+#  Observa que NO hay ninguna seccion "environment:": toda la configuracion del
+#  WAF vive en ficheros .conf explicitos (carpeta waf/). Nada se configura con
+#  variables de entorno.
+# =============================================================================
+
+services:
+
+  # --- Backend vulnerable ----------------------------------------------------
+  juice-shop:
+    image: bkimminich/juice-shop
+    container_name: juice-shop
+    networks:
+      - waf-net
+    # Publicado tambien en el host (3000) solo para poder abrirlo en el
+    # navegador y ver la app "sin WAF". El notebook NO usa este puerto: habla
+    # con el backend por su nombre de red (http://juice-shop:3000).
+    ports:
+      - "3000:3000"
+
+  # --- WAF: nginx + ModSecurity + OWASP CRS ----------------------------------
+  waf:
+    build: ./waf                 # se construye desde waf/Dockerfile (a mano)
+    image: waf-juiceshop
+    container_name: waf-proxy
+    depends_on:
+      - juice-shop               # nginx resuelve "juice-shop" al arrancar
+    networks:
+      - waf-net
+    ports:
+      - "8080:80"                # entrada "con WAF" para el navegador del host
+    volumes:
+      # El fichero de tuning vive en el host: se edita y se recarga nginx, sin
+      # reconstruir la imagen (ver la Parte 2 del notebook).
+      - ./waf/tuning-local.conf:/etc/nginx/modsec/tuning-local.conf
+      # El log de auditoria sale a la carpeta del proyecto, para analizarlo.
+      - ./waf-audit-log:/var/log/modsec
+
+  # --- Puesto del analista: Jupyter con celdas bash --------------------------
+  jupyter:
+    build: ./jupyter
+    container_name: waf-jupyter
+    depends_on:
+      - waf
+    networks:
+      - waf-net
+    ports:
+      - "8888:8888"
+    volumes:
+      # Todo el proyecto (incluido el notebook, waf/ y waf-audit-log/) montado
+      # en /workspace: asi el notebook ve el log y puede editar tuning-local.conf.
+      - .:/workspace
+      # Socket de Docker del host: permite al notebook hacer "docker exec" /
+      # "docker logs" contra waf-proxy para leer las reglas CRS reales y recargar
+      # nginx en caliente. Acceso total al Docker del host: aceptable en este
+      # laboratorio local y descartable, NO es un patron para produccion.
+      - /var/run/docker.sock:/var/run/docker.sock
+
+networks:
+  waf-net:
+    driver: bridge
